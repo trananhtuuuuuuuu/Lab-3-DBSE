@@ -1,13 +1,12 @@
 from db import get_connection
-from rsa_utils import encrypt_score
 
-def insert_grade(masv, mahp, diemthi, pubkey_pem):
-    encrypted_score = encrypt_score(pubkey_pem, diemthi)
-
+def insert_grade(masv, mahp, diemthi, manv):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("EXEC SP_INSERT_GRADE ?, ?, ?", (masv, mahp, encrypted_score))
-    conn.commit()
+    # Gọi SP, để SQL Server tự mã hóa
+    cursor.execute("EXEC SP_INSERT_GRADE ?, ?, ?, ?", (masv, mahp, diemthi, manv))
 
+    print(f"✅ Đã insert điểm thi đã mã hóa cho {masv} - {mahp}")
+    conn.commit()
     conn.close()
