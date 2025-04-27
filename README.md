@@ -23,6 +23,8 @@
 
 
 # Running follow code below, please
-cd student_management
-pip install -r requirements.txt
-streamlit run app.py
+
+- cd into your my folder which you cloned from link github
+- after go on that my folder let follow these command below
+- pip install -r requirements.txt
+- streamlit run app.py
