@@ -103,11 +103,11 @@ GO
 
 
 
--- SP_INS_PUBLIC_NHANVIEN
+-- Create new SP_INS_PUBLIC_NHANVIEN
 CREATE PROCEDURE SP_INS_PUBLIC_NHANVIEN
-    @MANV VARCHAR(20),
+    @MANV NVARCHAR(20),
     @HOTEN NVARCHAR(100),
-    @EMAIL VARCHAR(20),
+    @EMAIL NVARCHAR(20),
     @LUONGCB VARCHAR(100),
     @TENDN NVARCHAR(100),
     @MK NVARCHAR(100)
@@ -115,13 +115,34 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @MATKHAU VARBINARY(MAX) = HASHBYTES('SHA1', @MK);
-    DECLARE @ASYM_KEY_ID INT = AsymKey_ID('AsymKey_NhanVien');
-    DECLARE @LUONG_ENC VARBINARY(MAX) = EncryptByAsymKey(@ASYM_KEY_ID, CONVERT(VARBINARY(MAX), @LUONGCB));
-    DECLARE @PUBKEY VARCHAR(20) = @MANV;
+    DECLARE @MK_HASHED VARBINARY(MAX);
+    DECLARE @LUONG_ENCRYPTED VARBINARY(MAX);
+    DECLARE @PublicKey NVARCHAR(20);
 
-    INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY)
-    VALUES (@MANV, @HOTEN, @EMAIL, @LUONG_ENC, @TENDN, @MATKHAU, @PUBKEY);
+    -- Hash mật khẩu bằng SHA1
+    SET @MK_HASHED = HASHBYTES('SHA1', CONVERT(NVARCHAR(100), @MK));
+
+    -- Gán PUBKEY
+    SET @PublicKey = @MANV;
+
+    -- Tạo asymmetric key ứng với nhân viên
+    EXEC SP_CREATE_ASYMMETRIC_KEY @PublicKey, @MK;
+
+    -- Mã hóa lương sử dụng AsymKey của nhân viên
+    SET @LUONG_ENCRYPTED = EncryptByAsymKey(AsymKey_ID(@PublicKey), CONVERT(VARBINARY(MAX), @LUONGCB));
+
+    -- Thêm nhân viên vào bảng nếu chưa tồn tại
+    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
+    BEGIN
+        INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY)
+        VALUES (@MANV, @HOTEN, @EMAIL, @LUONG_ENCRYPTED, @TENDN, @MK_HASHED, @PublicKey);
+
+        PRINT N'Nhân viên đã được thêm vào bảng NHANVIEN: ' + @MANV;
+    END
+    ELSE
+    BEGIN
+        PRINT N'Nhân viên với mã ' + @MANV + N' đã tồn tại.';
+    END
 END;
 GO
 
@@ -242,33 +263,43 @@ GO
 
 
 
--- Drop if exists
+
+
+-- Drop old procedure if exists
 IF OBJECT_ID('SP_INSERT_GRADE', 'P') IS NOT NULL
     DROP PROCEDURE SP_INSERT_GRADE;
 GO
 
+-- Create new dynamic version
 CREATE PROCEDURE SP_INSERT_GRADE
-    @MASV VARCHAR(20),
-    @MAHP VARCHAR(20),
+    @MASV NVARCHAR(20),
+    @MAHP NVARCHAR(20),
     @DIEMTHI FLOAT,
-    @MANV VARCHAR(20) 
+    @MANV NVARCHAR(20) -- Logged-in Employee ID (also the Asymmetric Key Name)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Lấy đúng AsymKey chung
+    -- Get employee-specific Asymmetric Key
     DECLARE @ASYM_KEY_ID INT;
-    SET @ASYM_KEY_ID = AsymKey_ID('AsymKey_NhanVien');  
+    SET @ASYM_KEY_ID = AsymKey_ID(@MANV);
 
-   
-    DECLARE @DIEMTHI_TEXT VARCHAR(50);
-    SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS VARCHAR(50));
+    -- Check if key exists
+    IF @ASYM_KEY_ID IS NULL
+    BEGIN
+        RAISERROR('Asymmetric key for MANV not found.', 16, 1);
+        RETURN;
+    END
 
-    -- Mã hóa điểm thi
+    -- Prepare score text for encryption
+    DECLARE @DIEMTHI_TEXT NVARCHAR(50);
+    SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS NVARCHAR(50));
+
+    -- Encrypt the score
     DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
     SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
 
-    
+    -- Insert into BANGDIEM
     INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
     VALUES (@MASV, @MAHP, @ENCRYPTED_SCORE);
 END;
@@ -276,57 +307,105 @@ GO
 
 
 
+
 -- Drop old procedure if exists
-IF OBJECT_ID('SP_UPDATE_STUDENT_INFO', 'P') IS NOT NULL
-    DROP PROCEDURE SP_UPDATE_STUDENT_INFO;
+IF OBJECT_ID('SP_INSERT_GRADE', 'P') IS NOT NULL
+    DROP PROCEDURE SP_INSERT_GRADE;
 GO
 
--- Create new procedure
-CREATE PROCEDURE SP_UPDATE_STUDENT_INFO
+-- Create correct procedure
+CREATE PROCEDURE SP_INSERT_GRADE
     @MASV NVARCHAR(20),
-    @HOTEN NVARCHAR(100),
-    @DIACHI NVARCHAR(200)
+    @MAHP NVARCHAR(20),
+    @DIEMTHI FLOAT,
+    @MANV NVARCHAR(20) -- Nhân viên đang đăng nhập
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    UPDATE SINHVIEN
-    SET HOTEN = @HOTEN,
-        DIACHI = @DIACHI
+    DECLARE @PublicKey NVARCHAR(20);
+    DECLARE @MALOP NVARCHAR(20);
+    SET @PublicKey = @MANV;
+
+    -- Lấy lớp của sinh viên
+    SELECT @MALOP = MALOP
+    FROM SINHVIEN
     WHERE MASV = @MASV;
+
+    -- Nếu sinh viên không tồn tại hoặc chưa có lớp
+    IF @MALOP IS NULL
+    BEGIN
+        RAISERROR(N'Sinh viên không tồn tại hoặc chưa có lớp.', 16, 1);
+        RETURN;
+    END
+
+    -- Kiểm tra xem nhân viên có quản lý lớp này không
+    IF NOT EXISTS (
+        SELECT 1
+        FROM LOP
+        WHERE MALOP = @MALOP AND MANV = @MANV
+    )
+    BEGIN
+        RAISERROR(N'Bạn không có quyền nhập điểm cho sinh viên này.', 16, 1);
+        RETURN;
+    END
+
+    -- Lấy Asymmetric Key ID cho nhân viên
+    DECLARE @ASYM_KEY_ID INT;
+    SET @ASYM_KEY_ID = AsymKey_ID(@PublicKey);
+
+    IF @ASYM_KEY_ID IS NULL
+    BEGIN
+        RAISERROR(N'Không tìm thấy khóa bất đối xứng của nhân viên.', 16, 1);
+        RETURN;
+    END
+
+    -- Convert điểm thi sang NVARCHAR để mã hóa
+    DECLARE @DIEMTHI_TEXT NVARCHAR(50);
+    SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS NVARCHAR(50));
+
+    -- Mã hóa điểm thi
+    DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
+    SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
+
+    -- Insert chỉ MASV, MAHP, DIEMTHI vào bảng BANGDIEM
+    INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
+    VALUES (@MASV, @MAHP, @ENCRYPTED_SCORE);
+
+    PRINT N'Đã nhập điểm thành công.';
 END;
 GO
 
 
 
--- Drop if exists
-IF OBJECT_ID('SP_SEL_PUBLIC_GRADE', 'P') IS NOT NULL
-    DROP PROCEDURE SP_SEL_PUBLIC_GRADE;
-GO
+-- -- Drop if exists
+-- IF OBJECT_ID('SP_SEL_PUBLIC_GRADE', 'P') IS NOT NULL
+--     DROP PROCEDURE SP_SEL_PUBLIC_GRADE;
+-- GO
 
--- Create procedure
-CREATE PROCEDURE SP_SEL_PUBLIC_GRADE
-AS
-BEGIN
-    SET NOCOUNT ON;
+-- -- Create procedure
+-- CREATE PROCEDURE SP_SEL_PUBLIC_GRADE
+-- AS
+-- BEGIN
+--     SET NOCOUNT ON;
 
-    DECLARE @PASSWORD NVARCHAR(100) = '22120429'; -- Password khi tạo MASTER KEY / ASYMMETRIC KEY
+--     DECLARE @PASSWORD NVARCHAR(100) = '22120429'; -- Password khi tạo MASTER KEY / ASYMMETRIC KEY
 
-    SELECT 
-        MASV,
-        MAHP,
-        CASE
-            WHEN DecryptByAsymKey(AsymKey_ID('AsymKey_NhanVien'), DIEMTHI, @PASSWORD) IS NOT NULL
-            THEN CONVERT(FLOAT, CONVERT(VARCHAR(50), DecryptByAsymKey(
-                AsymKey_ID('AsymKey_NhanVien'),
-                DIEMTHI,
-                @PASSWORD
-            )))
-            ELSE NULL
-        END AS DIEMTHI_GIAIMA
-    FROM BANGDIEM;
-END;
-GO
+--     SELECT 
+--         MASV,
+--         MAHP,
+--         CASE
+--             WHEN DecryptByAsymKey(AsymKey_ID('AsymKey_NhanVien'), DIEMTHI, @PASSWORD) IS NOT NULL
+--             THEN CONVERT(FLOAT, CONVERT(VARCHAR(50), DecryptByAsymKey(
+--                 AsymKey_ID('AsymKey_NhanVien'),
+--                 DIEMTHI,
+--                 @PASSWORD
+--             )))
+--             ELSE NULL
+--         END AS DIEMTHI_GIAIMA
+--     FROM BANGDIEM;
+-- END;
+-- GO
 
 
 
@@ -353,21 +432,21 @@ EXEC SP_INS_PUBLIC_NHANVIEN
 -- Insert Courses
 INSERT INTO HOCPHAN (MAHP, TENHP, SOTC) VALUES 
 ('HP01', N'Database Systems', 3),
-('HP02', N'Computer Networks', 3);
-('HP03', N'Maching Learning', 3);
-('HP04', N'Deep Learning', 3);
-('HP05', N'Introduction AI', 3);
-('HP06', N'How to become Data Engineering', 3);
+('HP02', N'Computer Networks', 3),
+('HP03', N'Maching Learning', 3),
+('HP04', N'Deep Learning', 3),
+('HP05', N'Introduction AI', 3),
+('HP06', N'How to become Data Engineering', 3),
 ('HP07', N'Introduction Software Engineer', 3);
 
 -- Insert Classes
 INSERT INTO LOP (MALOP, TENLOP, MANV) VALUES 
 ('L01', N'Class Data Science', 'NV01'),
-('L02', N'Class Artificial Intelligence', 'NV02');
-('L03', N'Intro ML', 'NV03');
-('L04', N'Intro DL', 'NV04');
-('L05', N'Intro AI', 'NV02');
-('L06', N'Intro DE', 'NV01');
+('L02', N'Class Artificial Intelligence', 'NV02'),
+('L03', N'Intro ML', 'NV03'),
+('L04', N'Intro DL', 'NV04'),
+('L05', N'Intro AI', 'NV02'),
+('L06', N'Intro DE', 'NV01'),
 ('L07', N'Intro SE', 'NV05');
 
 -- Insert Students
@@ -375,10 +454,10 @@ INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU) VALU
 ('SV01', N'Pham Thi A', '2002-01-01', N'HCMC', 'L01', 'pta', HASHBYTES('SHA1', '123456')),
 ('SV02', N'Le Van B', '2002-02-02', N'Hanoi', 'L01', 'lvb', HASHBYTES('SHA1', '123456')),
 ('SV03', N'Nguyen Van C', '2001-03-03', N'Da Nang', 'L02', 'nvc', HASHBYTES('SHA1', '123456')),
-('SV04', N'Tran Thi D', '2001-04-04', N'Can Tho', 'L02', 'ttd', HASHBYTES('SHA1', '123456'));
-('SV05', N'Peter Cua Em', '2001-04-04', N'TP.HCM', 'L03', 'pce', HASHBYTES('SHA1', '123456'));
-('SV06', N'Anh Jack Cua Em', '2001-04-04', N'TP.HCM', 'L04', 'ajce', HASHBYTES('SHA1', '123456'));
-('SV07', N'Hotboy Ben Tre', '2001-04-04', N'Ben Tre', 'L05', 'hbt', HASHBYTES('SHA1', '123456'));
-('SV08', N'Trinh Tran Phuong Tuan', '2001-04-04', N'Ben Tre', 'L06', 'ttpt', HASHBYTES('SHA1', '123456'));
-('SV09', N'Vi Tinh Tu', '2001-04-04', N'Ben Tre', 'L07', 'vtt', HASHBYTES('SHA1', '123456'));
+('SV04', N'Tran Thi D', '2001-04-04', N'Can Tho', 'L02', 'ttd', HASHBYTES('SHA1', '123456')),
+('SV05', N'Peter Cua Em', '2001-04-04', N'TP.HCM', 'L03', 'pce', HASHBYTES('SHA1', '123456')),
+('SV06', N'Anh Jack Cua Em', '2001-04-04', N'TP.HCM', 'L04', 'ajce', HASHBYTES('SHA1', '123456')),
+('SV07', N'Hotboy Ben Tre', '2001-04-04', N'Ben Tre', 'L05', 'hbt', HASHBYTES('SHA1', '123456')),
+('SV08', N'Trinh Tran Phuong Tuan', '2001-04-04', N'Ben Tre', 'L06', 'ttpt', HASHBYTES('SHA1', '123456')),
+('SV09', N'Vi Tinh Tu', '2001-04-04', N'Ben Tre', 'L07', 'vtt', HASHBYTES('SHA1', '123456')),
 ('SV010', N'Mai Yeu Peter', '2001-04-04', N'TP.HCM', 'L01', 'myp', HASHBYTES('SHA1', '123456'));
