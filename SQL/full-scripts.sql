@@ -337,17 +337,17 @@ GO
 
 
 
--- Drop old procedure if exists
+
 IF OBJECT_ID('SP_INSERT_GRADE', 'P') IS NOT NULL
     DROP PROCEDURE SP_INSERT_GRADE;
 GO
 
--- Create correct procedure
+
 CREATE PROCEDURE SP_INSERT_GRADE
     @MASV NVARCHAR(20),
     @MAHP NVARCHAR(20),
     @DIEMTHI FLOAT,
-    @MANV NVARCHAR(20) -- Nhân viên đang đăng nhập
+    @MANV NVARCHAR(20) 
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -356,19 +356,19 @@ BEGIN
     DECLARE @MALOP NVARCHAR(20);
     SET @PublicKey = @MANV;
 
-    -- Lấy lớp của sinh viên
+    
     SELECT @MALOP = MALOP
     FROM SINHVIEN
     WHERE MASV = @MASV;
 
-    -- Nếu sinh viên không tồn tại hoặc chưa có lớp
+   
     IF @MALOP IS NULL
     BEGIN
         RAISERROR(N'Sinh viên không tồn tại hoặc chưa có lớp.', 16, 1);
         RETURN;
     END
 
-    -- Kiểm tra xem nhân viên có quản lý lớp này không
+    
     IF NOT EXISTS (
         SELECT 1
         FROM LOP
@@ -379,7 +379,7 @@ BEGIN
         RETURN;
     END
 
-    -- Lấy Asymmetric Key ID cho nhân viên
+    
     DECLARE @ASYM_KEY_ID INT;
     SET @ASYM_KEY_ID = AsymKey_ID(@PublicKey);
 
@@ -389,15 +389,15 @@ BEGIN
         RETURN;
     END
 
-    -- Convert điểm thi sang NVARCHAR để mã hóa
+    
     DECLARE @DIEMTHI_TEXT NVARCHAR(50);
     SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS NVARCHAR(50));
 
-    -- Mã hóa điểm thi
+   
     DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
     SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
 
-    -- Insert chỉ MASV, MAHP, DIEMTHI vào bảng BANGDIEM
+    
     INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
     VALUES (@MASV, @MAHP, @ENCRYPTED_SCORE);
 
@@ -409,34 +409,30 @@ GO
 
 
 
--- Drop if exists
 IF OBJECT_ID('SP_UPDATE_GRADE', 'P') IS NOT NULL
     DROP PROCEDURE SP_UPDATE_GRADE;
 GO
-
--- Create procedure
 CREATE PROCEDURE SP_UPDATE_GRADE
     @MASV NVARCHAR(20),
     @MAHP NVARCHAR(20),
     @DIEMTHI FLOAT,
-    @MANV NVARCHAR(20)  -- Người đang login
+    @MANV NVARCHAR(20)  
 AS
 BEGIN
     SET NOCOUNT ON;
 
     DECLARE @MALOP NVARCHAR(20);
 
-    -- Lấy lớp của sinh viên
+   
     SELECT @MALOP = MALOP FROM SINHVIEN WHERE MASV = @MASV;
 
-    -- Nếu sinh viên không có lớp hoặc không tồn tại
     IF @MALOP IS NULL
     BEGIN
         RAISERROR(N'Sinh viên không tồn tại hoặc chưa có lớp.', 16, 1);
         RETURN;
     END
 
-    -- Kiểm tra nhân viên có quản lý lớp này không
+    
     IF NOT EXISTS (
         SELECT 1
         FROM LOP
@@ -447,7 +443,18 @@ BEGIN
         RETURN;
     END
 
-    -- Tiếp tục: Mã hóa điểm thi
+    
+    IF NOT EXISTS (
+        SELECT 1
+        FROM BANGDIEM
+        WHERE MASV = @MASV AND MAHP = @MAHP
+    )
+    BEGIN
+        RAISERROR(N'Sinh viên này chưa đăng ký học phần này.', 16, 1);
+        RETURN;
+    END
+
+    
     DECLARE @PublicKey NVARCHAR(20) = @MANV;
     DECLARE @ASYM_KEY_ID INT;
     SET @ASYM_KEY_ID = AsymKey_ID(@PublicKey);
@@ -464,7 +471,6 @@ BEGIN
     DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
     SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
 
-    -- Update vào BANGDIEM
     UPDATE BANGDIEM
     SET DIEMTHI = @ENCRYPTED_SCORE
     WHERE MASV = @MASV AND MAHP = @MAHP;
@@ -473,34 +479,6 @@ GO
 
 
 
--- -- Drop if exists
--- IF OBJECT_ID('SP_SEL_PUBLIC_GRADE', 'P') IS NOT NULL
---     DROP PROCEDURE SP_SEL_PUBLIC_GRADE;
--- GO
-
--- -- Create procedure
--- CREATE PROCEDURE SP_SEL_PUBLIC_GRADE
--- AS
--- BEGIN
---     SET NOCOUNT ON;
-
---     DECLARE @PASSWORD NVARCHAR(100) = '22120429'; -- Password khi tạo MASTER KEY / ASYMMETRIC KEY
-
---     SELECT 
---         MASV,
---         MAHP,
---         CASE
---             WHEN DecryptByAsymKey(AsymKey_ID('AsymKey_NhanVien'), DIEMTHI, @PASSWORD) IS NOT NULL
---             THEN CONVERT(FLOAT, CONVERT(VARCHAR(50), DecryptByAsymKey(
---                 AsymKey_ID('AsymKey_NhanVien'),
---                 DIEMTHI,
---                 @PASSWORD
---             )))
---             ELSE NULL
---         END AS DIEMTHI_GIAIMA
---     FROM BANGDIEM;
--- END;
--- GO
 
 
 
