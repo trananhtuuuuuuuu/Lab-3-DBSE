@@ -96,12 +96,85 @@ END;
 GO
 
 -- ============================
+-- CREATE ENCRYPTION MATERIAL
+-- ============================
+
+-- Create MASTER KEY
+IF NOT EXISTS (SELECT * FROM sys.symmetric_keys WHERE symmetric_key_id = 101)
+BEGIN
+    CREATE MASTER KEY ENCRYPTION BY PASSWORD = '22120429';
+END;
+GO
+
+-- Create CERTIFICATE
+IF NOT EXISTS (SELECT * FROM sys.certificates WHERE name = 'MYCERTIFICATE')
+BEGIN
+    CREATE CERTIFICATE MYCERTIFICATE
+    WITH SUBJECT = 'Certificate use for create asymmetric key';
+END;
+GO
+
+-- Create ASYMMETRIC KEY
+IF NOT EXISTS (SELECT * FROM sys.asymmetric_keys WHERE name = 'AsymKey_NhanVien')
+BEGIN
+    CREATE ASYMMETRIC KEY AsymKey_NhanVien
+    WITH ALGORITHM = RSA_2048
+    ENCRYPTION BY PASSWORD = '22120429';
+END;
+GO
+
+-- ============================
 -- CREATE STORED PROCEDURES
 -- ============================
 
+-- Drop procedure if exists
+IF OBJECT_ID('SP_CREATE_ASYMMETRIC_KEY', 'P') IS NOT NULL
+    DROP PROCEDURE SP_CREATE_ASYMMETRIC_KEY;
+GO
+
+-- SP tạo asymmetric key 
+
+CREATE PROCEDURE SP_CREATE_ASYMMETRIC_KEY 
+
+    @KeyName NVARCHAR(100),    
+
+    @Password NVARCHAR(100) 
+
+AS 
+
+BEGIN 
+
+    IF NOT EXISTS (SELECT * FROM sys.asymmetric_keys WHERE name = @KeyName) 
+
+BEGIN 
+
+DECLARE @SQL NVARCHAR(MAX); 
+
+SET @SQL = 'CREATE ASYMMETRIC KEY '  + CAST(@KeyName AS VARCHAR) + ' WITH ALGORITHM = RSA_2048 ' + 'ENCRYPTION BY PASSWORD = '''+@Password+''''; 
+
+EXEC sp_executesql @SQL; 
+
+PRINT N'Asymmetric Key đã được tạo: ' + @KeyName; 
+
+END 
+
+    ELSE 
+
+        PRINT N'Asymmetric Key đã tồn tại: ' + @KeyName; 
+
+END 
+
+GO 
 
 
 
+
+
+-- SP_INS_PUBLIC_NHANVIEN
+-- Drop old procedure if exists
+IF OBJECT_ID('SP_INS_PUBLIC_NHANVIEN', 'P') IS NOT NULL
+    DROP PROCEDURE SP_INS_PUBLIC_NHANVIEN;
+GO
 
 -- Create new SP_INS_PUBLIC_NHANVIEN
 CREATE PROCEDURE SP_INS_PUBLIC_NHANVIEN
