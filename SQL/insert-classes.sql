@@ -7,3 +7,4 @@ INSERT INTO LOP (MALOP, TENLOP, MANV) VALUES
 ('L05', N'Intro AI', 'NV02');
 ('L06', N'Intro DE', 'NV01');
 ('L07', N'Intro SE', 'NV05');
+

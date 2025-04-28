@@ -264,50 +264,6 @@ GO
 
 
 
-
--- Drop old procedure if exists
-IF OBJECT_ID('SP_INSERT_GRADE', 'P') IS NOT NULL
-    DROP PROCEDURE SP_INSERT_GRADE;
-GO
-
--- Create new dynamic version
-CREATE PROCEDURE SP_INSERT_GRADE
-    @MASV NVARCHAR(20),
-    @MAHP NVARCHAR(20),
-    @DIEMTHI FLOAT,
-    @MANV NVARCHAR(20) -- Logged-in Employee ID (also the Asymmetric Key Name)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Get employee-specific Asymmetric Key
-    DECLARE @ASYM_KEY_ID INT;
-    SET @ASYM_KEY_ID = AsymKey_ID(@MANV);
-
-    -- Check if key exists
-    IF @ASYM_KEY_ID IS NULL
-    BEGIN
-        RAISERROR('Asymmetric key for MANV not found.', 16, 1);
-        RETURN;
-    END
-
-    -- Prepare score text for encryption
-    DECLARE @DIEMTHI_TEXT NVARCHAR(50);
-    SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS NVARCHAR(50));
-
-    -- Encrypt the score
-    DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
-    SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
-
-    -- Insert into BANGDIEM
-    INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
-    VALUES (@MASV, @MAHP, @ENCRYPTED_SCORE);
-END;
-GO
-
-
-
-
 -- Drop old procedure if exists
 IF OBJECT_ID('SP_INSERT_GRADE', 'P') IS NOT NULL
     DROP PROCEDURE SP_INSERT_GRADE;
@@ -378,6 +334,72 @@ GO
 
 
 
+
+
+-- Drop if exists
+IF OBJECT_ID('SP_UPDATE_GRADE', 'P') IS NOT NULL
+    DROP PROCEDURE SP_UPDATE_GRADE;
+GO
+
+-- Create procedure
+CREATE PROCEDURE SP_UPDATE_GRADE
+    @MASV NVARCHAR(20),
+    @MAHP NVARCHAR(20),
+    @DIEMTHI FLOAT,
+    @MANV NVARCHAR(20)  -- Người đang login
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @MALOP NVARCHAR(20);
+
+    -- Lấy lớp của sinh viên
+    SELECT @MALOP = MALOP FROM SINHVIEN WHERE MASV = @MASV;
+
+    -- Nếu sinh viên không có lớp hoặc không tồn tại
+    IF @MALOP IS NULL
+    BEGIN
+        RAISERROR(N'Sinh viên không tồn tại hoặc chưa có lớp.', 16, 1);
+        RETURN;
+    END
+
+    -- Kiểm tra nhân viên có quản lý lớp này không
+    IF NOT EXISTS (
+        SELECT 1
+        FROM LOP
+        WHERE MALOP = @MALOP AND MANV = @MANV
+    )
+    BEGIN
+        RAISERROR(N'Bạn không có quyền cập nhật điểm sinh viên này.', 16, 1);
+        RETURN;
+    END
+
+    -- Tiếp tục: Mã hóa điểm thi
+    DECLARE @PublicKey NVARCHAR(20) = @MANV;
+    DECLARE @ASYM_KEY_ID INT;
+    SET @ASYM_KEY_ID = AsymKey_ID(@PublicKey);
+
+    IF @ASYM_KEY_ID IS NULL
+    BEGIN
+        RAISERROR(N'Không tìm thấy Asymmetric Key của nhân viên.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @DIEMTHI_TEXT NVARCHAR(50);
+    SET @DIEMTHI_TEXT = CAST(@DIEMTHI AS NVARCHAR(50));
+
+    DECLARE @ENCRYPTED_SCORE VARBINARY(MAX);
+    SET @ENCRYPTED_SCORE = EncryptByAsymKey(@ASYM_KEY_ID, @DIEMTHI_TEXT);
+
+    -- Update vào BANGDIEM
+    UPDATE BANGDIEM
+    SET DIEMTHI = @ENCRYPTED_SCORE
+    WHERE MASV = @MASV AND MAHP = @MAHP;
+END;
+GO
+
+
+
 -- -- Drop if exists
 -- IF OBJECT_ID('SP_SEL_PUBLIC_GRADE', 'P') IS NOT NULL
 --     DROP PROCEDURE SP_SEL_PUBLIC_GRADE;
@@ -407,6 +429,48 @@ GO
 -- END;
 -- GO
 
+
+
+-- Drop old procedure if exists
+IF OBJECT_ID('SP_VIEW_SCORES_BY_TEACHER_V2', 'P') IS NOT NULL
+    DROP PROCEDURE SP_VIEW_SCORES_BY_TEACHER_V2;
+GO
+
+-- Create new procedure
+CREATE PROCEDURE SP_VIEW_SCORES_BY_TEACHER_V2
+    @MANV NVARCHAR(20),        -- Mã nhân viên
+    @Password NVARCHAR(100)    -- Password của Asymmetric Key
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 
+        BD.MASV,
+        SV.HOTEN AS TenSinhVien,
+        BD.MAHP,
+        HP.TENHP AS TenHocPhan,
+        CASE
+            WHEN BD.DIEMTHI IS NOT NULL
+                 AND DecryptByAsymKey(AsymKey_ID(@MANV), BD.DIEMTHI, @Password) IS NOT NULL
+            THEN CONVERT(FLOAT, CONVERT(NVARCHAR(50), DecryptByAsymKey(
+                AsymKey_ID(@MANV),
+                BD.DIEMTHI,
+                @Password
+            )))
+            ELSE NULL
+        END AS DIEMTHI_GIAIMA
+    FROM 
+        BANGDIEM BD
+    INNER JOIN
+        SINHVIEN SV ON SV.MASV = BD.MASV
+    INNER JOIN
+        HOCPHAN HP ON HP.MAHP = BD.MAHP
+    INNER JOIN
+        LOP L ON SV.MALOP = L.MALOP
+    WHERE 
+        L.MANV = @MANV; -- Chỉ cho xem điểm sinh viên do mình quản lý
+END;
+GO
 
 
 -- ============================
