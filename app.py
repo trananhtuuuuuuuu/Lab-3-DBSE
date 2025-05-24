@@ -5,11 +5,12 @@ from student import get_students_by_class
 from grade_entry import insert_grade
 from db import get_connection
 from handling_exception import handle_error
+from MyCrypto import MyCrypto
 
 
 st.set_page_config(page_title="Database Security", layout="centered")
 
-st.title("LOGIN")
+#st.title("LOGIN")
 
 # Initialize session variables
 if 'logged_in' not in st.session_state:
@@ -20,6 +21,9 @@ if 'just_logged_in' not in st.session_state:
 if 'logout_flag' not in st.session_state:
     st.session_state.logout_flag = False
 
+
+
+
 #  Only show login if not logged in!
 if not st.session_state.logged_in:
     with st.form(key="login_form"):
@@ -28,17 +32,29 @@ if not st.session_state.logged_in:
         submit_button = st.form_submit_button("Login")
 
     if submit_button:
-        result = login(username, password)
+        # Băm mật khẩu trước khi gửi xuống CSDL
+        try:
+            crypto = MyCrypto()
+            hashed_password_hex = crypto.hash_password_by_sha1(password)
+            hashed_password_bytes = bytes.fromhex(hashed_password_hex)
 
-        if isinstance(result, str) and result.startswith("ERROR::"):
-            st.error("" + result.replace("ERROR::", ""))
-        elif result:
-            st.session_state.logged_in = True
-            st.session_state.user = result
-            st.session_state.just_logged_in = True
-            st.session_state.user_password = password
-        else:
-            st.error("Invalid ID or password!")
+            # Gọi login với mật khẩu đã hash
+            result = login(username, hashed_password_bytes)
+
+            if isinstance(result, str) and result.startswith("ERROR::"):
+                st.error("" + result.replace("ERROR::", ""))
+            elif result:
+                st.session_state.logged_in = True
+                st.session_state.user = result
+                st.session_state.just_logged_in = True
+                st.session_state.user_password = password  # Có thể giữ lại để giải RSA nếu cần
+            else:
+                st.error("Invalid ID or password!")
+
+        except Exception as e:
+            st.error(f"Error during login encryption: {e}")
+
+
 
 #  After login, show main app
 if st.session_state.logged_in:
@@ -55,7 +71,7 @@ if st.session_state.logged_in:
         st.session_state.just_logged_in = False
        
 
-    choice = st.sidebar.selectbox("Choose function", ["Manage Classes", "Manage Students", "Enter Grades"])
+    choice = st.sidebar.selectbox("Choose function", ["Manage Classes", "Manage Students", "Enter Grades", "View Profile"])
 
     if choice == "Manage Classes":
         st.header("Class List")
@@ -147,7 +163,6 @@ if st.session_state.logged_in:
 
 
 
-
     elif choice == "Enter Grades":
       st.header("Enter Grades")
 
@@ -162,3 +177,44 @@ if st.session_state.logged_in:
               st.success("Grade encrypted and inserted successfully!")
           except Exception as e:
               st.error(f"Error inserting grade: {str(e)}")
+
+
+    elif choice == "View Profile":
+        st.header("👤 Hồ sơ cá nhân")
+
+        from MyCrypto import MyCrypto
+        crypto = MyCrypto()
+
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            manv = st.session_state.user[0]
+            password = st.session_state.user_password
+            hashed_pw = bytes.fromhex(crypto.hash_password_by_sha1(password))
+
+            cursor.execute("EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN ?, ?", manv, hashed_pw)
+            row = cursor.fetchone()
+            conn.close()
+
+            if row:
+                manv, hoten, email, luong_bytes = row
+
+                try:
+                    luong_goc = crypto.decrypt_salary(luong_bytes)
+                except Exception:
+                    luong_goc = "⚠️ Không giải mã được"
+
+                st.subheader(f"📄 Thông tin nhân viên")
+                st.write(f"🆔 Mã NV: `{manv}`")
+                st.write(f"👤 Họ tên: `{hoten}`")
+                st.write(f"📧 Email: `{email}`")
+                st.write(f"💰 Lương (đã giải mã): `{luong_goc}`")
+            else:
+                st.warning("Không tìm thấy nhân viên hoặc sai mật khẩu.")
+        except Exception as e:
+            handle_error(e)
+
+
+
+

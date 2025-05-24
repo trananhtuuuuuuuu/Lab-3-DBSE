@@ -117,13 +117,14 @@ if __name__ == "__main__":
     password = "abc123"
 
     public_key = my_crypto.get_public_key()
-    print("Public key: ", public_key)
+    print(f"Public key:  {public_key} \n")
 
     encrypted_salary = my_crypto.encrypt_salary(salary)
-    print("Encryp salary (base64): ", base64.b64encode(encrypted_salary).decode())
+    print(f"Encryp salary (base64):  {base64.b64encode(encrypted_salary).decode()}")
+    print(f"Encryp salary (hex):  {(encrypted_salary).hex().upper()}")
 
     decrypted_salary = my_crypto.decrypt_salary(encrypted_salary)
-    print("Decryp salary: ", decrypted_salary)
+    print(f"Decryp salary:  {decrypted_salary}")
 
     hashed_password = my_crypto.hash_password_by_sha1(password)
-    print("Hash password by SHA1: ", hashed_password)
+    print(f"Hash password by SHA1:  {hashed_password}")
