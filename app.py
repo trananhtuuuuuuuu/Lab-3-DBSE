@@ -63,6 +63,7 @@ if st.session_state.logged_in:
         for c in classes:
             st.write(f"Class ID: {c[0]}, Class Name: {c[1]}, Teacher: {c[2]}")
 
+
     elif choice == "Manage Students":
         st.header("Student List")
 
@@ -95,19 +96,19 @@ if st.session_state.logged_in:
 
                     for sv in students:
                         student_id = sv[0]
-                        st.subheader(f"🎓 Student ID: {student_id}")
+                        st.subheader(f"Student ID: {student_id}")
 
                         # Tìm điểm sinh viên
                         student_grades = [g for g in all_grades if g[0] == student_id]
 
                         if student_grades:
                             for g in student_grades:
-                                st.write(f"📘 Course: {g[2]}, Score: {g[4]}, Course: {g[3]}")
+                                st.write(f"Course: {g[2]}, Score: {g[4]}, Course: {g[3]}")
                         else:
-                            st.write("❗ No scores yet.")
+                            st.write("No scores yet.")
 
                         # Dropdown chọn Course từ các môn sinh viên đã học
-                        course_options = {f"{g[2]}": g[2] for g in student_grades}  # hiển thị đẹp
+                        course_options = {f"{g[2]}": g[2] for g in student_grades}  
 
                         selected_course = st.selectbox(
                             f"Select Course to Update for {student_id}",
@@ -135,17 +136,47 @@ if st.session_state.logged_in:
                                 )
                                 conn.commit()
                                 conn.close()
-                                st.success(f"✅ Updated grade for {student_id} in {selected_course_id}")
+                                st.success(f"Updated grade for {student_id} in {selected_course_id}")
                             except Exception as e:
                                 handle_error(e)
+                        
+
+
+
+                        # # Nhập mã học phần ()
+                        # selected_course_id = st.text_input(
+                        #     f"Enter Course ID (MAHP) to update for {student_id}",
+                        #     key=f"input_course_{student_id}"
+                        # )
+
+                        # # Nhập điểm mới
+                        # new_score = st.number_input(
+                        #     f"Enter New Score for {student_id} ({selected_course_id})",
+                        #     min_value=0.0, max_value=10.0,
+                        #     key=f"new_score_{student_id}"
+                        # )
+
+                        # # Cập nhật điểm
+                        # if st.button(f"Update Grade for {student_id}", key=f"update_grade_{student_id}"):
+                        #     try:
+                        #         conn = get_connection()
+                        #         cursor = conn.cursor()
+                        #         cursor.execute(
+                        #             "EXEC SP_UPDATE_GRADE ?, ?, ?, ?",
+                        #             (student_id, selected_course_id, new_score, current_manv)
+                        #         )
+                        #         conn.commit()
+                        #         conn.close()
+                        #         st.success(f"Updated grade for {student_id} in {selected_course_id}")
+                        #     except Exception as e:
+                        #         handle_error(e)
+
 
                 else:
-                    st.warning("❗ No students found or you don't have permission to view this class.")
+                    st.warning("No students found or you don't have permission to view this class.")
 
             except Exception as e:
                 handle_error(e)
-
-
 
 
     elif choice == "Enter Grades":

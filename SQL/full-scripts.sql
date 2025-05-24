@@ -272,8 +272,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @HashedPassword VARBINARY(20)
-    SET @HashedPassword = HASHBYTES('SHA1', @MK);
+    DECLARE @HashedPassword VARBINARY(20) -- 20 bytes vì hàm HASHBYTES('SHA1') luôn trả về chuỗi nhị phân dài 20 bytes
+    SET @HashedPassword = HASHBYTES('SHA1', @MK); -- SHA1 là thuật toán băm sử dụng, là hàm băm 1 chiều, không thể giải mã ngược, dùng so sánh mật khẩu người dùng không cần lưu mật khẩu gốc
 
     SELECT MANV, HOTEN, EMAIL, TENDN, PUBKEY
     FROM NHANVIEN
@@ -519,7 +519,7 @@ BEGIN
     INNER JOIN
         LOP L ON SV.MALOP = L.MALOP
     WHERE 
-        L.MANV = @MANV; -- Chỉ cho xem điểm sinh viên do mình quản lý
+        L.MANV = @MANV; 
 END;
 GO
 
