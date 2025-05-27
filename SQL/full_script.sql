@@ -38,7 +38,7 @@ CREATE TABLE NHANVIEN (
     LUONG VARBINARY(MAX),
     TENDN NVARCHAR(100) NOT NULL UNIQUE,
     MATKHAU VARBINARY(MAX) NOT NULL,
-    PUBKEY VARCHAR(20)
+    PUBKEY VARCHAR(MAX)
 );
 
 CREATE TABLE HOCPHAN (
@@ -79,14 +79,14 @@ INSERT INTO HOCPHAN (MAHP, TENHP, SOTC) VALUES
 ('HP07', N'Introduction Software Engineer', 3);
 
 -- Insert Classes
-INSERT INTO LOP (MALOP, TENLOP, MANV) VALUES 
-('L01', N'Class Data Science', 'NV01'),
-('L02', N'Class Artificial Intelligence', 'NV02'),
-('L03', N'Intro ML', 'NV03'),
-('L04', N'Intro DL', 'NV04'),
-('L05', N'Intro AI', 'NV02'),
-('L06', N'Intro DE', 'NV01'),
-('L07', N'Intro SE', 'NV05');
+-- INSERT INTO LOP (MALOP, TENLOP, MANV) VALUES 
+-- ('L01', N'Class Data Science', 'NV01'),
+-- ('L02', N'Class Artificial Intelligence', 'NV02'),
+-- ('L03', N'Intro ML', 'NV03'),
+-- ('L04', N'Intro DL', 'NV04'),
+-- ('L05', N'Intro AI', 'NV02'),
+-- ('L06', N'Intro DE', 'NV01'),
+-- ('L07', N'Intro SE', 'NV05');
 
 -- Insert Students
 INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU) VALUES
